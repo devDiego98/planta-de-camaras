@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { AllLocationsPdfCapture } from "./components/AllLocationsPdfCapture";
+import { CameraPovModal } from "./components/CameraPovModal";
 import { CameraPanel } from "./components/CameraPanel";
 import { DoorPanel } from "./components/DoorPanel";
 import { FloorCanvas } from "./components/FloorCanvas";
@@ -10,7 +11,13 @@ import { VisionAlerts } from "./components/VisionAlerts";
 import { computeVisionConflicts } from "./fov";
 import { downloadDomAsPdf } from "./pdf/captureToPdf";
 import { useFloorPlan } from "./useFloorPlan";
-import { isCamera, isDoor, isGeneric, isPerson, type Location } from "./types";
+import {
+  isCamera,
+  isDoor,
+  isGeneric,
+  isPerson,
+  type Location,
+} from "./types";
 
 const AUTHOR_URL = "https://diego-perez.web.app";
 
@@ -58,6 +65,17 @@ function App() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const saveMessageTimerRef = useRef<number | null>(null);
   const suppressLocationRenameBlurCommit = useRef(false);
+  const [povCameraId, setPovCameraId] = useState<string | null>(null);
+
+  const povCamera = useMemo(() => {
+    if (!povCameraId || !activeLocation) return null;
+    const o = activeLocation.objects.find((x) => x.id === povCameraId);
+    return o && isCamera(o) ? o : null;
+  }, [povCameraId, activeLocation]);
+
+  useEffect(() => {
+    if (povCameraId && !povCamera) setPovCameraId(null);
+  }, [povCameraId, povCamera]);
 
   const commitEditingLocationIfAny = useCallback(() => {
     if (!editingLocationId) return;
@@ -381,6 +399,7 @@ function App() {
               {showCameraPanel ? (
                 <CameraPanel
                   camera={showCameraPanel}
+                  onOpenPov={() => setPovCameraId(showCameraPanel.id)}
                   onPatch={(patch) => patchCamera(showCameraPanel.id, patch)}
                 />
               ) : showPersonPanel ? (
@@ -423,6 +442,15 @@ function App() {
       </footer>
 
       <AllLocationsPdfCapture ref={pdfCaptureRef} locations={locations} />
+
+      <CameraPovModal
+        open={povCamera !== null}
+        povCamera={povCamera}
+        roomWidth={activeLocation.width}
+        roomHeight={activeLocation.height}
+        objects={activeLocation.objects}
+        onClose={() => setPovCameraId(null)}
+      />
     </div>
   );
 }

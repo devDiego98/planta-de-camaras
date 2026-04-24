@@ -7,6 +7,7 @@ import {
 
 interface CameraPanelProps {
   camera: CameraObject
+  onOpenPov?: () => void
   onPatch: (
     patch: Partial<
       Pick<
@@ -33,10 +34,18 @@ const valorPlanoOrder: ValorPlano[] = [
   'gran_plano_general',
 ]
 
-export function CameraPanel({ camera, onPatch }: CameraPanelProps) {
+export function CameraPanel({ camera, onOpenPov, onPatch }: CameraPanelProps) {
   return (
     <aside className="camera-panel" aria-label="Ajustes de cámara">
       <h2 className="camera-panel__title">{camera.label}</h2>
+
+      {onOpenPov ? (
+        <div className="camera-panel__actions">
+          <button type="button" className="btn" onClick={onOpenPov}>
+            Ver en 3D desde esta cámara
+          </button>
+        </div>
+      ) : null}
 
       <label className="field">
         <span className="field__label">Nombre</span>
