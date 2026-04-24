@@ -12,7 +12,7 @@ import { downloadDomAsPdf } from "./pdf/captureToPdf";
 import { useFloorPlan } from "./useFloorPlan";
 import { isCamera, isDoor, isGeneric, isPerson, type Location } from "./types";
 
-const AUTHOR_URL = "diego-perez.web.app";
+const AUTHOR_URL = "https://diego-perez.web.app";
 
 function App() {
   const fp = useFloorPlan();
