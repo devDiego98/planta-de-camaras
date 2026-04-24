@@ -1,0 +1,57 @@
+:root {
+  --text-h: #0f172a;
+  --text: #334155;
+  --text-muted: #64748b;
+  --bg: #f1f5f9;
+  --panel-bg: #ffffff;
+  --input-bg: #ffffff;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.08);
+  --canvas-bg: #f8fafc;
+  --grid-line: #cbd5e1;
+  --room-wall: #0f172a;
+  /** Halo behind upright canvas labels (dark text → light outline). */
+  --canvas-label-stroke: rgba(248, 250, 252, 0.95);
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text);
+  background-color: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-h: #f8fafc;
+    --text: #cbd5e1;
+    --text-muted: #94a3b8;
+    --bg: #0b1120;
+    --panel-bg: #111827;
+    --input-bg: #0f172a;
+    --border: #1e293b;
+    --accent: #60a5fa;
+    --accent-soft: rgba(96, 165, 250, 0.12);
+    --canvas-bg: #0f172a;
+    --grid-line: #334155;
+    --room-wall: #e2e8f0;
+    --canvas-label-stroke: rgba(15, 23, 42, 0.92);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#root {
+  min-height: 100vh;
+}
