@@ -113,6 +113,10 @@ export function isCamera(o: FloorObject): o is CameraObject {
   return o.type === 'camera'
 }
 
+export function isLight(o: FloorObject): o is LightObject {
+  return o.type === 'light'
+}
+
 export function isGeneric(o: FloorObject): o is GenericObject {
   return o.type === 'generic'
 }

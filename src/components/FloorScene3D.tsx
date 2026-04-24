@@ -1,11 +1,11 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import type { ElementRef } from 'react'
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { computePovPose, wallHeight } from '../camera3dMapping'
-import type { CameraObject, FloorObject } from '../types'
-import { isCamera, isDoor, isGeneric, isPerson } from '../types'
+import type { CameraObject, FloorObject, LightObject } from '../types'
+import { isCamera, isDoor, isGeneric, isLight, isPerson } from '../types'
 import { PersonMannequin3D } from './PersonMannequin3D'
 
 function PovRig({
@@ -128,6 +128,197 @@ function planRotationToThreeY(rotationDeg: number): number {
   return (-rotationDeg * Math.PI) / 180
 }
 
+/** Unit vector along which light travels (ceiling fixture → floor), biased by plan aim (+X at 0°). */
+function lightPropagationFromPlanRotation(rotationDeg: number): THREE.Vector3 {
+  const ry = planRotationToThreeY(rotationDeg)
+  const fx = Math.cos(ry)
+  const fz = -Math.sin(ry)
+  const horiz = 0.52
+  return new THREE.Vector3(fx * horiz, -1, fz * horiz).normalize()
+}
+
+function averageLightPropagation(
+  objects: FloorObject[],
+  roomWidth: number,
+  roomHeight: number,
+): THREE.Vector3 {
+  const lights = objects.filter((o) => o.type === 'light')
+  const sum = new THREE.Vector3(0, 0, 0)
+  for (const L of lights) {
+    sum.add(lightPropagationFromPlanRotation(L.rotation))
+  }
+  if (sum.lengthSq() < 1e-10) {
+    const wallH = wallHeight(roomWidth, roomHeight)
+    const p = new THREE.Vector3(
+      roomWidth * 0.55,
+      wallH * 2.4,
+      roomHeight * 0.45,
+    )
+    return p.clone().multiplyScalar(-1).normalize()
+  }
+  return sum.normalize()
+}
+
+const shadowMapSize = 2048
+
+function shadowOrthoBounds(roomWidth: number, roomHeight: number) {
+  const extent = Math.max(roomWidth, roomHeight) * 1.65
+  const shadowFar = Math.max(roomWidth, roomHeight) * 6
+  return { extent, shadowFar }
+}
+
+/** One directional per ceiling fixture: parallel rays along plan rotation, shadow falls “down-beam” from that source. */
+function FixtureDirectionalShadow({
+  fixtureX,
+  fixtureY,
+  fixtureZ,
+  rotationDeg,
+  intensity,
+  roomWidth,
+  roomHeight,
+}: {
+  fixtureX: number
+  fixtureY: number
+  fixtureZ: number
+  rotationDeg: number
+  intensity: number
+  roomWidth: number
+  roomHeight: number
+}) {
+  const lightRef = useRef<THREE.DirectionalLight>(null)
+  const dist = Math.max(roomWidth, roomHeight) * 4.5
+
+  const { position, targetPos } = useMemo(() => {
+    const d = lightPropagationFromPlanRotation(rotationDeg)
+    const fixture = new THREE.Vector3(fixtureX, fixtureY, fixtureZ)
+    return {
+      position: fixture.clone().addScaledVector(d, -dist),
+      targetPos: fixture.clone().addScaledVector(d, Math.max(80, dist * 0.04)),
+    }
+  }, [fixtureX, fixtureY, fixtureZ, rotationDeg, dist])
+
+  useLayoutEffect(() => {
+    const L = lightRef.current
+    if (!L) return
+    L.target.position.copy(targetPos)
+    L.target.updateMatrixWorld()
+  }, [targetPos])
+
+  const { extent, shadowFar } = shadowOrthoBounds(roomWidth, roomHeight)
+
+  return (
+    <directionalLight
+      ref={lightRef}
+      position={[position.x, position.y, position.z]}
+      intensity={intensity}
+      castShadow
+      shadow-mapSize={[shadowMapSize, shadowMapSize]}
+      shadow-camera-far={shadowFar}
+      shadow-camera-left={-extent}
+      shadow-camera-right={extent}
+      shadow-camera-top={extent}
+      shadow-camera-bottom={-extent}
+    />
+  )
+}
+
+/** Fallback when there are no plan lights: one key from averaged / default direction toward room center. */
+function ShadowCastingKeyLight({
+  roomWidth,
+  roomHeight,
+  objects,
+  intensity,
+}: {
+  roomWidth: number
+  roomHeight: number
+  objects: FloorObject[]
+  intensity: number
+}) {
+  const lightRef = useRef<THREE.DirectionalLight>(null)
+  const target = useMemo(
+    () => new THREE.Vector3(roomWidth / 2, 0, roomHeight / 2),
+    [roomWidth, roomHeight],
+  )
+
+  const { position, dir } = useMemo(() => {
+    const d = averageLightPropagation(objects, roomWidth, roomHeight)
+    const dist = Math.max(roomWidth, roomHeight) * 4.5
+    const pos = target.clone().sub(d.clone().multiplyScalar(dist))
+    return { position: pos, dir: d }
+  }, [objects, roomWidth, roomHeight, target])
+
+  useLayoutEffect(() => {
+    const L = lightRef.current
+    if (!L) return
+    L.target.position.copy(target)
+    L.target.updateMatrixWorld()
+  }, [target, dir, position])
+
+  const { extent, shadowFar } = shadowOrthoBounds(roomWidth, roomHeight)
+
+  return (
+    <directionalLight
+      ref={lightRef}
+      position={[position.x, position.y, position.z]}
+      intensity={intensity}
+      castShadow
+      shadow-mapSize={[shadowMapSize, shadowMapSize]}
+      shadow-camera-far={shadowFar}
+      shadow-camera-left={-extent}
+      shadow-camera-right={extent}
+      shadow-camera-top={extent}
+      shadow-camera-bottom={-extent}
+    />
+  )
+}
+
+function PlanLightShadows({
+  objects,
+  roomWidth,
+  roomHeight,
+  wallH,
+  intensity,
+}: {
+  objects: FloorObject[]
+  roomWidth: number
+  roomHeight: number
+  wallH: number
+  intensity: number
+}) {
+  const lights = objects.filter(isLight)
+  const ceilingY = wallH * 0.94
+
+  if (lights.length === 0) {
+    return (
+      <ShadowCastingKeyLight
+        roomWidth={roomWidth}
+        roomHeight={roomHeight}
+        objects={objects}
+        intensity={intensity}
+      />
+    )
+  }
+
+  const perLight = intensity / lights.length
+
+  return (
+    <>
+      {lights.map((L: LightObject) => (
+        <FixtureDirectionalShadow
+          key={L.id}
+          fixtureX={L.x}
+          fixtureY={ceilingY}
+          fixtureZ={L.y}
+          rotationDeg={L.rotation}
+          intensity={perLight}
+          roomWidth={roomWidth}
+          roomHeight={roomHeight}
+        />
+      ))}
+    </>
+  )
+}
+
 function Objects3D({
   objects,
   wallH,
@@ -167,7 +358,7 @@ function Objects3D({
             </group>
           )
         }
-        if (o.type === 'light') {
+        if (isLight(o)) {
           const ry = planRotationToThreeY(o.rotation)
           return (
             <group key={o.id} position={[o.x, wallH * 0.94, o.y]} rotation={[0, ry, 0]}>
@@ -187,7 +378,7 @@ function Objects3D({
           const ry = planRotationToThreeY(o.rotation)
           return (
             <group key={o.id} position={[o.x, 0, o.y]} rotation={[0, ry, 0]}>
-              <PersonMannequin3D height={personH} />
+              <PersonMannequin3D height={personH} planRotationDeg={o.rotation} />
             </group>
           )
         }
@@ -256,20 +447,16 @@ export function FloorScene3DCanvas({
     >
       <color attach="background" args={['#0f172a']} />
       <ambientLight intensity={amb} />
-      <directionalLight
-        position={[roomWidth * 0.55, wallH * 2.4, roomHeight * 0.45]}
+      <PlanLightShadows
+        objects={objects}
+        roomWidth={roomWidth}
+        roomHeight={roomHeight}
+        wallH={wallH}
         intensity={fill}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={Math.max(roomWidth, roomHeight) * 5}
-        shadow-camera-left={-roomWidth * 1.2}
-        shadow-camera-right={roomWidth * 2.2}
-        shadow-camera-top={roomHeight * 2.2}
-        shadow-camera-bottom={-roomHeight * 1.2}
       />
       <directionalLight
         position={[-roomWidth * 0.35, wallH * 1.8, roomHeight * 1.1]}
-        intensity={0.22}
+        intensity={0.07}
         color="#e2e8f0"
       />
       <hemisphereLight args={['#f1f5f9', '#475569', 0.32]} />
